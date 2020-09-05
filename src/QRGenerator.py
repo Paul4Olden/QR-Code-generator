@@ -17,6 +17,9 @@ class QrGenerator:
   def _draw_format(self):
     pass
 
+  def _set_byte_type(self, x, y, func):
+    pass
+
 class QrEncode:
   def __init__(self):
     pass
