@@ -554,17 +554,17 @@ class QRGeneratorBase:
         k = 0
         for i in range(numblocks):
             dat = data[k: k + shortblocklen - blockecclen + (0 if i < numshortblocks else 1)]
-            
+            blocks.append(ReedSolo().reed_solomon_encode(dat, blockecclen))
+
 
         assert k == len(data)
 
         # Interleave (not concatenate) the bytes from every block into a single sequence
         result = []
-        for i in range(len(blocks[0])):
-            for (j, blk) in enumerate(blocks):
-                # Skip the padding byte in short blocks
-                if i != shortblocklen - blockecclen or j >= numshortblocks:
-                    result.append(blk[i])
+        for block in blocks:
+            for byte in block:
+                result.append(bin(byte)[2:].zfill(8))
+        
         assert len(result) == rawcodewords
         return result
 
@@ -600,7 +600,7 @@ class QRGeneratorBase:
         QUARTILE: None
         HIGH: None
 
-    def __init__(self, version: int, ecc, data: bytearray, mask: int) -> None:
+    def __init__(self, version: int, ecc) -> None:
         self.version = version
         self.size = self.version * 4 + 17
         self.ecc_level = ecc
@@ -642,7 +642,24 @@ class QRCodeClassic(QRGeneratorBase):
         self._draw_version()
 
     def __init__(self, version: int, ecc: str, data: bytearray, mask: int) -> None:
-        super().__init__(version, ecc, data, mask)
+        super().__init__(version, ecc)
         self._draw_function_patterns()
         allcodewords = self._add_ecc(data)
         self._draw_codewords(allcodewords)
+
+        if mask == -1:
+            minpenalty = 1 << 32
+            for i in range(8):
+                self._apply_mask(i)
+                self._draw_format_bits(i)
+                penalty = self._get_penalty_score()
+                if penalty < minpenalty:
+                    mask = i
+                    minpenalty = penalty
+                self._apply_mask(i)
+        assert 0 <= mask <= 7
+        self._apply_mask(mask)
+        self._draw_format_bits(mask)
+
+        self._mask = mask
+        del self.pattern_matrix
