@@ -3,8 +3,8 @@ import collections
 from bitarray import bitarray
 import re
 
-WHITE = 0
-BLACK = 1
+WHITE = False
+BLACK = True
 FUNCTIONAL_PATTERN = 'FP'
 DATA_PATTERN = 'DP'
 
@@ -39,25 +39,25 @@ MASK_PATTERNS = {
 }
 
 ERROR_CORRECTION_LEVELS = {
-    'LOW': [
+    0: [
         (-1, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30,
          30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30),
         (-1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17,
          18, 19, 19, 20, 21, 22, 24, 25)
     ],
-    'MEDIUM': [
+    1: [
         (-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28,
          28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28),
         (-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29,
          31, 33, 35, 37, 38, 40, 43, 45, 47, 49)
     ],
-    'QUARTILE': [
+    2: [
         (-1, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28, 28, 26, 30, 28, 30, 30, 30, 30, 28, 30,
          30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30),
         (-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38,
          40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68)
     ],
-    'HIGH': [
+    3: [
         (-1, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30, 30, 30, 30, 30,
          30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30),
         (-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45,
@@ -77,7 +77,7 @@ alphaNumericValues = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:'
 class QrBytearray:
     @staticmethod
     def get_version(data_bit_length: int, ecc_level: int) -> int:
-        length = data_bit_length + ecc_level
+        length = data_bit_length + ecc_level + 8
 
         for el in QRCODE_CAPACITY:
             if length <= el:
@@ -146,7 +146,7 @@ class QrBytearray:
         return QRCODE_CAPACITY[version] - (
                     len(self.keyword) + REMINDER_BITS[version] + ERROR_CORRECTION_LEVELS[ecc_level][0][version] * 8)
 
-    def __init__(self, data: bytearray, data_len: int, version: int, mode: int, counter: list, ecc_level: str):
+    def __init__(self, data: bytearray, data_len: int, version: int, mode: int, counter: list, ecc_level):
         self.keyword = ''
         self.version = version
         self.ecc_level = ecc_level
@@ -183,10 +183,13 @@ class QrBytearray:
         raise ValueError('Data is not converted to bytes')
 
     @staticmethod
-    def encode_byte(data: str, version: int, ecc_level: str):
+    def encode_byte(data: str, version: int, ecc_level):
         """ Return bytearray object representing data ready for QR code using byte mode """
         counter = [8, 16, 16]
         _data = bytearray(data.encode())
+
+        if version == -1:
+            version = QrBytearray.get_version(len(data) * 8, ecc_level)
 
         return QrBytearray(
             _data, len(data), version, QrBytearray.get_mode(data), counter, ecc_level
@@ -346,10 +349,8 @@ class QRGeneratorBase:
 
     def _create_qrarray(self, size: int):
         """Create square with maximal capacity"""
-        for j in range(size):
-            for i in range(size):
-                self.matrix[j][i] = False
-                self.pattern_matrix[j][i] = False
+        self.matrix = [[False] * size] * size
+        self.pattern_matrix = [[False] * size] * size
 
     def _draw_timing_pattern(self):
         for i in range(self.size):
@@ -372,8 +373,6 @@ class QRGeneratorBase:
                 self._set_function_module(x + dx, y + dy, max(abs(dx), abs(dy)) != 1)
 
     def _set_function_module(self, x: int, y: int, isblack: bool) -> None:
-        """Sets the color of a module and marks it as a function module.
-        Only used by the constructor. Coordinates must be in bounds."""
         assert type(isblack) is bool
         self.matrix[y][x] = isblack
         self.pattern_matrix[y][x] = True
@@ -554,41 +553,29 @@ class QRGeneratorBase:
         k = 0
         for i in range(numblocks):
             dat = data[k: k + shortblocklen - blockecclen + (0 if i < numshortblocks else 1)]
+            k += len(dat)
             blocks.append(ReedSolo().reed_solomon_encode(dat, blockecclen))
 
-
-        assert k == len(data)
-
-        # Interleave (not concatenate) the bytes from every block into a single sequence
         result = []
         for block in blocks:
             for byte in block:
-                result.append(bin(byte)[2:].zfill(8))
+                result.append(int(bin(byte)[2:].zfill(8), 2))
         
-        assert len(result) == rawcodewords
         return result
 
     def _draw_codewords(self, data: list) -> None:
-        """Draws the given sequence of 8-bit codewords (data and error correction) onto the entire
-        data area of this QR Code. Function modules need to be marked off before this is called."""
-        assert len(data) == QRCODE_CAPACITY[self.version] // 8
-
-        i = 0  # Bit index into the data
-        # Do the funny zigzag scan
-        for right in range(self.size - 1, 0, -2):  # Index of right column in each column pair
+        i = 0
+        for right in range(self.size - 1, 0, -2):
             if right <= 6:
                 right -= 1
-            for vert in range(self.size):  # Vertical counter
+            for vert in range(self.size):
                 for j in range(2):
-                    x = right - j  # Actual x coordinate
+                    x = right - j
                     upward = (right + 1) & 2 == 0
-                    y = (self.size - 1 - vert) if upward else vert  # Actual y coordinate
+                    y = (self.size - 1 - vert) if upward else vert
                     if not self.pattern_matrix[y][x] and i < len(data) * 8:
                         self.matrix[y][x] = self._get_bit(data[i >> 3], 7 - (i & 7))
                         i += 1
-                # If this QR Code has any remainder bits (0 to 7), they were assigned as
-                # 0/false/white by the constructor and are left unchanged by this method
-        assert i == len(data) * 8
 
     class Ecc:
         def __init__(self, i: int, fb: int) -> None:
@@ -605,10 +592,8 @@ class QRGeneratorBase:
         self.size = self.version * 4 + 17
         self.ecc_level = ecc
 
-        self.matrix = []
-        self.pattern_matrix = []
-
-        self._create_qrarray(self.size)
+        self.matrix = [[False] * self.size for _ in range(self.size)]
+        self.pattern_matrix = [[False] * self.size for _ in range(self.size)]
 
     _PENALTY_N1 = 3
     _PENALTY_N2 = 3
@@ -622,6 +607,16 @@ class QRGeneratorBase:
 
 
 class QRCodeClassic(QRGeneratorBase):
+    @staticmethod
+    def generate_qr(data: str, ecc: QRGeneratorBase.Ecc, mask: int):
+        if mask not in range(0,7):
+            mask = -1
+        version = QrBytearray.get_version(len(data) * 8, ecc.ordinal + 1)
+
+        _data = QrBytearray.encode_byte(data, version, ecc.ordinal + 1)
+
+        return QRCodeClassic(version, ecc, _data, mask)
+
     def _draw_function_patterns(self):
         self._draw_timing_pattern()
 
@@ -641,7 +636,7 @@ class QRCodeClassic(QRGeneratorBase):
         self._draw_format_bits(0)
         self._draw_version()
 
-    def __init__(self, version: int, ecc: str, data: bytearray, mask: int) -> None:
+    def __init__(self, version: int, ecc: QRGeneratorBase.Ecc, data: bytearray, mask: int) -> None:
         super().__init__(version, ecc)
         self._draw_function_patterns()
         allcodewords = self._add_ecc(data)
