@@ -1,6 +1,4 @@
 import collections
-
-from bitarray import bitarray
 import re
 
 WHITE = False
