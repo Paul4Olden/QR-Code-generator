@@ -1,4 +1,5 @@
 import collections
+from bitarray import bitarray
 import re
 
 WHITE = False
@@ -75,11 +76,13 @@ alphaNumericValues = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:'
 class QrBytearray:
     @staticmethod
     def get_version(data_bit_length: int, ecc_level: int) -> int:
-        length = data_bit_length + ecc_level + 8
 
-        for el in QRCODE_CAPACITY:
-            if length <= el:
-                return QRCODE_CAPACITY.index(el)
+        for item in range(len(QRCODE_CAPACITY)):
+            pass
+            length = data_bit_length + ERROR_CORRECTION_LEVELS[ecc_level][0][item] * 8
+
+            if length <= QRCODE_CAPACITY[item]:
+                return QRCODE_CAPACITY.index(QRCODE_CAPACITY[item])
 
     @staticmethod
     def get_mode(data: str) -> int:
@@ -141,8 +144,12 @@ class QrBytearray:
     def _get_unfilled_bits(self):
         version = self.version
         ecc_level = self.ecc_level
-        return QRCODE_CAPACITY[version] - (
-                    len(self.keyword) + REMINDER_BITS[version] + ERROR_CORRECTION_LEVELS[ecc_level][0][version] * 8)
+        b = QRCODE_CAPACITY[version]
+        s = len(self.keyword)
+        c = REMINDER_BITS[version]
+        d = ERROR_CORRECTION_LEVELS[ecc_level][0][version] * 8
+        a = b - (s + c + d)
+        return a
 
     def __init__(self, data: bytearray, data_len: int, version: int, mode: int, counter: list, ecc_level):
         self.keyword = ''
@@ -609,9 +616,9 @@ class QRCodeClassic(QRGeneratorBase):
     def generate_qr(data: str, ecc: QRGeneratorBase.Ecc, mask: int):
         if mask not in range(0,7):
             mask = -1
-        version = QrBytearray.get_version(len(data) * 8, ecc.ordinal + 1)
+        version = QrBytearray.get_version(len(data) * 8, ecc.ordinal)
 
-        _data = QrBytearray.encode_byte(data, version, ecc.ordinal + 1)
+        _data = QrBytearray.encode_byte(data, version, ecc.ordinal)
 
         return QRCodeClassic(version, ecc, _data, mask)
 
